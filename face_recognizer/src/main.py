@@ -7,6 +7,7 @@ from numpy.linalg import norm
 import os
 import csv
 from datetime import datetime
+import pygame
 
 class FaceRecognitionApp:
     def __init__(self, master):
@@ -88,6 +89,8 @@ class FaceRecognitionApp:
         self.face_register_core(user_name, email)
 
     def face_register_core(self, user_name, email):
+        pygame.mixer.init()
+        pygame.mixer.music.load('register.wav')
         user_folder = os.path.join("register/embeddings", user_name)
         os.makedirs(user_folder, exist_ok=True)
 
@@ -147,9 +150,9 @@ class FaceRecognitionApp:
                     print(f"Face and landmarks of {user_name} captured and saved as {user_name}_{user_index}.jpg")
 
                     self.save_registration_to_csv(user_name, email)
-
+                    
                     embedding_matrix.append(faces[0].embedding)
-
+                    pygame.mixer.music.play()
                     break
 
                 elif key == ord('q'):
@@ -166,12 +169,11 @@ class FaceRecognitionApp:
 
             embedding_matrix = np.stack(embedding_matrix)
             self.save_embedding_matrix(user_name, embedding_matrix)
-
+        
     def face_verify(self):
         cap = cv.VideoCapture(0)
-
-        registered_embeddings = np.array([face["embedding"] for face in self.registered_faces])
-        registered_user_names = [face["user_name"] for face in self.registered_faces]
+        pygame.mixer.init()
+        pygame.mixer.music.load('error.wav')
 
         while True:
             ret, frame = cap.read()
@@ -183,41 +185,52 @@ class FaceRecognitionApp:
 
             faces = self.face_analysis.get(frame_copy)
 
-            for idx, face in enumerate(faces):
+            for face in faces:
                 bbox = face.bbox.astype(int)
-
                 cv.rectangle(frame_copy, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
 
                 if face.kps is not None:
                     landmarks = face.kps.astype(int)
-
                     for point in landmarks:
                         cv.circle(frame_copy, (point[0], point[1]), 2, (0, 0, 255), 2)
 
-                if len(self.registered_faces) > 0:
-                    registered_embeddings_matrix = np.stack(registered_embeddings)
+                    if len(self.registered_faces) > 0:
+                        max_similarity = 0
+                        matched_user_name = ""
 
-                    similarities = np.dot(registered_embeddings_matrix, face.embedding) / (
-                            norm(registered_embeddings_matrix, axis=1) * norm(face.embedding))
+                        for reg_face in self.registered_faces:
+                            result_folder = "register/results"
+                            result_file_path = os.path.join(result_folder, f"{reg_face['user_name']}_embedding_matrix.npy")
 
-                    max_similarity_index = np.argmax(similarities)
+                            # Load the saved embedding matrix from the "results" folder
+                            registered_embeddings_matrix = np.load(result_file_path)
 
-                    if similarities[max_similarity_index] > 0.7:
-                        rounded_similarity = round(similarities[max_similarity_index], 2)
-                        matched_user_name = registered_user_names[max_similarity_index]
-                        cv.putText(frame_copy, f"{matched_user_name}, {rounded_similarity}", (bbox[0], bbox[1] - 10),
-                                   cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv.LINE_AA)
+                            # Calculate similarities
+                            similarities = np.dot(registered_embeddings_matrix, face.embedding) / (
+                                    norm(registered_embeddings_matrix, axis=1) * norm(face.embedding))
 
-                        result_folder = "verification_results"
-                        os.makedirs(result_folder, exist_ok=True)
-                        result_file_path = os.path.join(result_folder,
-                                                        f"{matched_user_name}_{rounded_similarity}.jpg")
-                        cv.imwrite(result_file_path, frame)
+                            # Find the maximum similarity
+                            current_max_similarity = np.max(similarities)
 
-                    else:
-                        cv.rectangle(frame_copy, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
-                        cv.putText(frame_copy, "Face not verified", (bbox[0], bbox[1] - 10), cv.FONT_HERSHEY_SIMPLEX, 1,
-                                   (0, 0, 255), 2, cv.LINE_AA)
+                            if current_max_similarity > max_similarity:
+                                max_similarity = current_max_similarity
+                                matched_user_name = reg_face["user_name"]
+
+                        if max_similarity > 0.7:  # Threshold for similarity
+                            rounded_similarity = round(max_similarity, 2)
+                            cv.putText(frame_copy, f"{matched_user_name}, {rounded_similarity}", (bbox[0], bbox[1] - 10),
+                                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv.LINE_AA)
+
+                            result_folder = "verification_results"
+                            os.makedirs(result_folder, exist_ok=True)
+                            result_file_path = os.path.join(result_folder,
+                                                            f"{matched_user_name}_{rounded_similarity}.jpg")
+                            cv.imwrite(result_file_path, frame)
+                            pygame.mixer.music.play()
+                        else:
+                            cv.rectangle(frame_copy, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
+                            cv.putText(frame_copy, "Face not verified", (bbox[0], bbox[1] - 10),
+                                    cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv.LINE_AA)
 
             cv.imshow('Face_Recognition', frame_copy)
 
@@ -230,6 +243,8 @@ class FaceRecognitionApp:
 
     def face_attendance(self):
         cap = cv.VideoCapture(0)
+        pygame.mixer.init()
+        pygame.mixer.music.load('error.wav')
 
         while True:
             ret, frame = cap.read()
@@ -241,25 +256,54 @@ class FaceRecognitionApp:
 
             faces = self.face_analysis.get(frame_copy)
 
-            for idx, face in enumerate(faces):
+            for face in faces:
                 bbox = face.bbox.astype(int)
-
                 cv.rectangle(frame_copy, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
 
                 if face.kps is not None:
                     landmarks = face.kps.astype(int)
-
                     for point in landmarks:
                         cv.circle(frame_copy, (point[0], point[1]), 2, (0, 0, 255), 2)
 
-                    for reg_face in self.registered_faces:
-                        similarity = self.calculate_similarity(reg_face["embedding"], face.embedding)
-                        if similarity > 0.7:
-                            cv.putText(frame_copy, f"{reg_face['user_name']} - Present", (bbox[0], bbox[3] + 20),
-                                       cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv.LINE_AA)
-                            break
+                    if len(self.registered_faces) > 0:
+                        max_similarity = 0
+                        matched_user_name = ""
 
-            cv.imshow('Face_Attendance', frame_copy)
+                        for reg_face in self.registered_faces:
+                            result_folder = "register/results"
+                            result_file_path = os.path.join(result_folder, f"{reg_face['user_name']}_embedding_matrix.npy")
+
+                            # Load the saved embedding matrix from the "results" folder
+                            registered_embeddings_matrix = np.load(result_file_path)
+
+                            # Calculate similarities
+                            similarities = np.dot(registered_embeddings_matrix, face.embedding) / (
+                                    norm(registered_embeddings_matrix, axis=1) * norm(face.embedding))
+
+                            # Find the maximum similarity
+                            current_max_similarity = np.max(similarities)
+
+                            if current_max_similarity > max_similarity:
+                                max_similarity = current_max_similarity
+                                matched_user_name = reg_face["user_name"]
+
+                        if max_similarity > 0.7:  # Threshold for similarity
+                            rounded_similarity = round(max_similarity, 2)
+                            cv.putText(frame_copy, f"{matched_user_name} - Present", (bbox[0], bbox[1] - 10),
+                                    cv.FONT_HERSHEY_SIMPLEX, 0.75, (255, 0, 0), 2, cv.LINE_AA)
+
+                            result_folder = "verification_results"
+                            os.makedirs(result_folder, exist_ok=True)
+                            result_file_path = os.path.join(result_folder,
+                                                            f"{matched_user_name}_{rounded_similarity}.jpg")
+                            cv.imwrite(result_file_path, frame)
+                            pygame.mixer.music.play()
+                        else:
+                            cv.rectangle(frame_copy, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
+                            cv.putText(frame_copy, "Face not verified", (bbox[0], bbox[1] - 10),
+                                    cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv.LINE_AA)
+
+            cv.imshow('Face_Recognition', frame_copy)
 
             key = cv.waitKey(1)
             if key == ord('q'):
